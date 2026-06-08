@@ -1,0 +1,21 @@
+info:
+  name: Create message
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:3000/messages
+  body:
+    type: json
+    data: |-
+      {
+        "content": "Bye"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
