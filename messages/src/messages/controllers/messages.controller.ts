@@ -11,12 +11,32 @@ import { MessagesService } from '../messages.service';
 
 @Controller('messages')
 export class MessagesController {
-  messagesService: MessagesService;
+  // Syntax #1
+  // messagesService: MessagesService;
 
-  constructor() {
-    // DO NOT DO THIS IN PRODUCTION
-    // We will be refactoring this code.
-    this.messagesService = new MessagesService();
+  // constructor(messagesService: MessagesService) {
+  //   // DO NOT DO THIS IN PRODUCTION
+  //   // We will be refactoring this code.
+  //   // OLD CODE
+  //   // this.messagesService = new MessagesService();
+
+  //   this.messagesService = messagesService;
+  // }
+
+  // Syntax #2 - Equivalent to Syntax #1
+  constructor(
+    public messagesService: MessagesService,
+    // public messagesService2: MessagesService,
+    // public messagesService3: MessagesService,
+  ) {
+    // console.log(
+    //   `Is messagesService equal to messagesService2?`,
+    //   messagesService === messagesService2,
+    // );
+    // console.log(
+    //   `Is messagesService2 equal to messagesService3?`,
+    //   messagesService2 === messagesService3,
+    // );
   }
 
   @Get()

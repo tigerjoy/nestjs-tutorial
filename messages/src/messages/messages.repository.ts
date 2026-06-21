@@ -1,7 +1,13 @@
 import { readFile, writeFile } from 'fs/promises';
+import { Injectable } from '@nestjs/common';
 
 const FILE_PATH = 'messages.json';
 
+// No changes are required in the MessagesRepository
+// since this does not have any dependency in its
+// constructor.
+
+@Injectable()
 class MessagesRepository {
   async findOne(id: string) {
     const contents = await readFile(FILE_PATH, 'utf-8');

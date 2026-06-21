@@ -42,6 +42,9 @@
         - [Why would there be any other implementation besides the MessagesRepository implementation?](#why-would-there-be-any-other-implementation-besides-the-messagesrepository-implementation)
     - [Introduction to Dependency Injection](#introduction-to-dependency-injection)
       - [DI Container Flow](#di-container-flow)
+    - [Refactor to Use Dependency Injection](#refactor-to-use-dependency-injection)
+    - [How does Nest create a controller?](#how-does-nest-create-a-controller)
+    - [What is the benefit?](#what-is-the-benefit)
 
 ## App Setup
 
@@ -1358,4 +1361,295 @@ Steps to follow:
 
 We will now refactor our code to use the Inversion of Control and use the DI system to auto-wire the dependecies for us.
 
-sasa
+### Refactor to Use Dependency Injection
+
+```typescript
+// file: src/messages/messages.service.ts
+
+import { MessagesRepository } from './messages.repository';
+
+// This service is initializing its own dependencies.
+// MessagesRepository is a dependency of this service.
+// Service cannot work correctly, unless it has the repository.
+class MessagesService {
+  // Syntax #1
+  // messagesRepo: MessagesRepository;
+
+  // constructor(messagesRepo: MessagesRepository) {
+  //   // OLD ASSIGNMENT
+  //   // this.messagesRepo = new MessagesRepository();
+
+  //   this.messagesRepo = messagesRepo;
+  // }
+
+  // Syntax #2 - Equivalent to #1
+  constructor(public messagesRepo: MessagesRepository) {}
+
+  findOne(id: string) {
+    return this.messagesRepo.findOne(id);
+  }
+
+  findAll() {
+    return this.messagesRepo.findAll();
+  }
+
+  create(content: string) {
+    return this.messagesRepo.create(content);
+  }
+}
+
+export { MessagesService };
+```
+
+```typescript
+// file: src/messages/controllers/messages.controller.ts
+
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  NotFoundException,
+} from '@nestjs/common';
+import { CreateMessageDto } from '../dtos/create-message.dto';
+import { MessagesService } from '../messages.service';
+
+@Controller('messages')
+export class MessagesController {
+  // Syntax #1
+  // messagesService: MessagesService;
+
+  // constructor(messagesService: MessagesService) {
+  //   // DO NOT DO THIS IN PRODUCTION
+  //   // We will be refactoring this code.
+  //   // OLD CODE
+  //   // this.messagesService = new MessagesService();
+
+  //   this.messagesService = messagesService;
+  // }
+
+  // Syntax #2 - Equivalent to Syntax #1
+  constructor(public messagesService: MessagesService) {}
+
+  @Get()
+  listMessages() {
+    return this.messagesService.findAll();
+  }
+
+  @Post()
+  createMessage(@Body() body: CreateMessageDto) {
+    return this.messagesService.create(body.content);
+  }
+
+  @Get('/:id')
+  async getMessage(@Param('id') id: string) {
+    const message = await this.messagesService.findOne(id);
+
+    if (!message) {
+      throw new NotFoundException('message not found');
+    }
+
+    return message;
+  }
+}
+```
+
+```typescript
+// file: src/messages/messages.repository.ts
+
+import { readFile, writeFile } from 'fs/promises';
+
+const FILE_PATH = 'messages.json';
+
+// No changes are required in the MessagesRepository
+// since this does not have any dependency in its
+// constructor.
+class MessagesRepository {
+  async findOne(id: string) {
+    const contents = await readFile(FILE_PATH, 'utf-8');
+    const messages = JSON.parse(contents);
+
+    return messages[id];
+  }
+
+  async findAll() {
+    const contents = await readFile(FILE_PATH, 'utf-8');
+    const messages = JSON.parse(contents);
+
+    return messages;
+  }
+
+  async create(content: string) {
+    const contents = await readFile(FILE_PATH, 'utf-8');
+    const messages = JSON.parse(contents);
+    const length = Object.keys(messages).length;
+    const id = (length + 1).toString();
+
+    messages[id] = {
+      content,
+      id,
+    };
+
+    await writeFile(FILE_PATH, JSON.stringify(messages));
+
+    return messages[id];
+  }
+}
+
+export { MessagesRepository };
+```
+
+Now we will need to wire up all of these classes to the DI container. To do this,
+
+1. We use the `Injectable` decorator on each class and add them to the modules list of providers.
+
+```typescript
+// file: src/messages/messages.service.ts
+
+import { MessagesRepository } from './messages.repository';
+import { Injectable } from '@nestjs/common';
+
+
+// @Injectable() marks this class for registration, and with
+// this the registration in the DI container happens
+// automatically.
+@Injectable()
+class MessagesService { ... }
+```
+
+```typescript
+// file: src/messages/messages.repository.ts
+
+import { readFile, writeFile } from 'fs/promises';
+import { Injectable } from '@nestjs/common';
+
+const FILE_PATH = 'messages.json';
+
+// No changes are required in the MessagesRepository
+// since this does not have any dependency in its
+// constructor.
+
+@Injectable()
+class MessagesRepository { ... }
+```
+
+We don't have to register the Controller class since it is not a dependency, rather it is only a consumer of classes.
+
+We register every other class except for the Controller class (ex. Services, Repositories).
+
+Now we will need to add the `Services` and `Repositories` needs to be added in the `Module`'s list of providers.
+
+```typescript
+// file: src/messages/messages.module.ts
+
+import { Module } from '@nestjs/common';
+import { MessagesController } from './controllers/messages.controller';
+import { MessagesService } from './messages.service';
+import { MessagesRepository } from './messages.repository';
+
+@Module({
+  controllers: [MessagesController],
+  // Things that can be used as deoendendies for other classes
+  providers: [MessagesService, MessagesRepository],
+})
+export class MessagesModule {}
+```
+
+When doing this, we never had to touch any Container, or Injector or anything like that.
+
+We did not have to do any explicit registration. We only make use of the 
+
+1. `@Injectable` decorator
+2. Add the classes in the `Module`'s provider
+
+The steps 3 and 4 of the DI flow steps happens automatically, Nest will try to create controller instances for us.
+
+Now that we are using Dependency Injection system, the next question is obivious, what did we gain by doing all of this?
+
+Currently we are using the `Better` approach of writing the DI classes. Where the `MessagesService` receives its exact dependecy of `MessagesRepository`.
+
+In the `Best` approach we would have defined the interfaces, so that we can swap out implementations.
+
+Implementing the `Best` approach in TypeScript is a little challenging due to its syntax. We can use a couple of different tricks to get around those challenges.
+
+Currently our service assumes that it will receive the direct references of the exact object `MessagesRepostiory`.
+
+### How does Nest create a controller?
+
+Following is our controller code.
+
+```typescript
+export class MessagesController {
+   constructor(public messagesService: MessagesService) {}
+}
+```
+
+When creating the instance of this Controller class, it will ask the Nest DI Container to provide us an object of the `MessagesService`, which would require an instance of the `MessagesRepository`.
+
+Apart from this, the container would also maintain a singleton list of objects of all the dependencies that it created. (This is a very important thing to understand in DI).
+
+It will create and store this instance internally, and whenever the DI container is asked for this instance it will continue to return the same instance every single time (only one instance ever will be created).
+
+We can prove this through this small code.
+
+```typescript
+@Controller('messages')
+export class MessagesController {
+  // Syntax #1
+  // messagesService: MessagesService;
+
+  // constructor(messagesService: MessagesService) {
+  //   // DO NOT DO THIS IN PRODUCTION
+  //   // We will be refactoring this code.
+  //   // OLD CODE
+  //   // this.messagesService = new MessagesService();
+
+  //   this.messagesService = messagesService;
+  // }
+
+  // Syntax #2 - Equivalent to Syntax #1
+  constructor(
+    public messagesService: MessagesService,
+    public messagesService2: MessagesService,
+    public messagesService3: MessagesService,
+  ) {
+    console.log(
+      `Is messagesService equal to messagesService2?`,
+      messagesService === messagesService2,
+    );
+    console.log(
+      `Is messagesService2 equal to messagesService3?`,
+      messagesService2 === messagesService3,
+    );
+  }
+  ...
+}
+```
+
+OUTPUT:
+
+```bash
+[9:50:57 AM] Starting compilation in watch mode...
+
+[9:50:58 AM] Found 0 errors. Watching for file changes.
+
+[Nest] 2331  - 06/19/2026, 9:50:58 AM     LOG [NestFactory] Starting Nest application...
+Is messagesService equal to messagesService2? true <--
+Is messagesService2 equal to messagesService3? true <--
+```
+
+Even when we asked for 3 copies of the `MessagesService` instance, it still just created one instance and passed that copy around. This will have a pretty big impact on how we design our services.
+
+We have to keep in mind that the same object will be shared across all the classes that depend on it.
+
+There are ways of getting around this. If we always want to have a brand new copy, we can do that as well.
+
+### What is the benefit?
+
+Sometimes in Nest, it may feel like we are jumping through extra hoops to create the classes, without gaining a whole lot.
+
+Testing you application when our app uses Dependency Injection and inversion of control technique, it will be lot easier to test.
+
+Testing individual classes inside our app, it will be a lot simpler and easier with DI, than without.
+

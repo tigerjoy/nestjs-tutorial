@@ -10,7 +10,7 @@ http:
     type: json
     data: |-
       {
-        "content": "Bye"
+        "content": "messages after di"
       }
   auth: inherit
 
